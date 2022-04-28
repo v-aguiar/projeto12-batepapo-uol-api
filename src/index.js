@@ -3,6 +3,7 @@ import cors from "cors";
 import chalk from "chalk";
 import dotenv from "dotenv";
 import dayjs from "dayjs";
+import utf8 from "utf8";
 
 import { MongoClient } from "mongodb";
 import Joi from "joi";
@@ -20,6 +21,12 @@ let db = null;
 // Set JOI validation schemas
 const participants_schema = new Joi.object({
   name: Joi.string().required(),
+});
+const messages_schema = new Joi.object({
+  to: Joi.string().required(),
+  text: Joi.string().required(),
+  type: Joi.string().valid("message", "private_message"),
+  from: Joi.string(),
 });
 
 // GET all participants list
@@ -52,17 +59,10 @@ app.post("/participants", async (req, res) => {
     mongoClient.connect();
 
     // Check if name already exists in db
-    try {
-      const hasName = await db
-        .collection("participants")
-        .findOne({ name: name });
+    const hasName = await db.collection("participants").findOne({ name: name });
 
-      if (hasName) {
-        throw new Error("⚠ Name already registered!");
-      }
-    } catch (e) {
-      console.error(e);
-      res.sendStatus(409);
+    if (hasName) {
+      res.status(409).send("⚠ Name already registered!");
       mongoClient.close();
       return;
     }
@@ -113,6 +113,55 @@ app.get("/messages", async (req, res) => {
     mongoClient.close();
   } catch (e) {
     res.send("400");
+    mongoClient.close();
+  }
+});
+
+// POST a new message on the DB
+app.post("/messages", async (req, res) => {
+  const { to, text, type } = req.body;
+  const from = utf8.decode(req.headers.user);
+  const time = dayjs().format("HH:mm:ss");
+
+  console.log("\nuser from: ", from);
+
+  try {
+    // Connect to DB
+    await mongoClient.connect();
+    db = mongoClient.db("batepapo-uol-api");
+
+    // Validate if user is registered in DB
+    const isUserValid = await db
+      .collection("participants")
+      .findOne({ name: from });
+
+    console.log("\nisUserValid: ", isUserValid);
+
+    if (!isUserValid) {
+      res.status(401).send("⚠ User must be registered!");
+      mongoClient.close();
+      return;
+    }
+
+    // Validate received data using Joi
+    await messages_schema.validateAsync({ to, text, type, from });
+
+    // Save validated massage on DB
+    const message = {
+      time,
+      from,
+      to,
+      text,
+      type,
+    };
+
+    await db.collection("messages").insertOne(message);
+
+    res.sendStatus(201);
+    mongoClient.close();
+  } catch (e) {
+    console.error(e.message + "\nError: " + e);
+    res.sendStatus(422);
     mongoClient.close();
   }
 });
