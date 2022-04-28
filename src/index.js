@@ -98,20 +98,24 @@ app.post("/participants", async (req, res) => {
 //GET messages list
 app.get("/messages", async (req, res) => {
   try {
-    const { limit } = req.query;
-    // IF limit EXISTS, RETURN LIMITED AMOUNT OF MESSAGES, ELSE, RETURN ALL MESSAGES
-    const searchObject = {};
+    const limit = parseInt(req.query.limit);
 
     await mongoClient.connect();
     db = mongoClient.db("batepapo-uol-api");
 
-    const messages = await db
-      .collection("messages")
-      .find(searchObject)
-      .toArray();
+    const messages = limit
+      ? await db
+          .collection("messages")
+          .find()
+          .sort({ _id: -1 })
+          .limit(limit)
+          .toArray()
+      : await db.collection("messages").find().toArray();
+
     res.status(200).send(messages);
     mongoClient.close();
   } catch (e) {
+    console.error(e);
     res.send("400");
     mongoClient.close();
   }
