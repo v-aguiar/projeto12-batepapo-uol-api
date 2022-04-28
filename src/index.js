@@ -47,9 +47,27 @@ app.post("/participants", async (req, res) => {
     // Validate name using Joi Schema
     await participants_schema.validateAsync({ name });
 
+    // Connect to mongodb
     db = mongoClient.db("batepapo-uol-api");
     mongoClient.connect();
 
+    // Check if name already exists in db
+    try {
+      const hasName = await db
+        .collection("participants")
+        .findOne({ name: name });
+
+      if (hasName) {
+        throw new Error("⚠ Name already registered!");
+      }
+    } catch (e) {
+      console.error(e);
+      res.sendStatus(409);
+      mongoClient.close();
+      return;
+    }
+
+    // Format data to be sent to the db;
     const participant = {
       name: name,
       lastStatus: Date.now(),
@@ -71,6 +89,7 @@ app.post("/participants", async (req, res) => {
     mongoClient.close();
   } catch (e) {
     console.error(e);
+
     res.sendStatus(422);
     mongoClient.close();
   }
