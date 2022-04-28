@@ -17,7 +17,7 @@ app.use(json());
 const mongoClient = new MongoClient(process.env.MONGO_URI);
 let db = null;
 
-// Set JOI validation schema
+// Set JOI validation schemas
 const participants_schema = new Joi.object({
   name: Joi.string().required(),
 });
@@ -42,8 +42,9 @@ app.get("/participants", async (req, res) => {
 app.post("/participants", async (req, res) => {
   try {
     const { name } = req.body;
-    const time = dayjs().format("HH:MM:SS");
+    const time = dayjs().format("HH:mm:ss");
 
+    // Validate name using Joi Schema
     await participants_schema.validateAsync({ name });
 
     db = mongoClient.db("batepapo-uol-api");
@@ -62,7 +63,7 @@ app.post("/participants", async (req, res) => {
       time,
     };
 
-    // Save participant and enter-room message on MongoDB
+    // Save participant and 'enter-room message' on MongoDB
     await db.collection("participants").insertOne(participant);
     await db.collection("messages").insertOne(message);
 
@@ -71,6 +72,28 @@ app.post("/participants", async (req, res) => {
   } catch (e) {
     console.error(e);
     res.sendStatus(422);
+    mongoClient.close();
+  }
+});
+
+//GET messages list
+app.get("/messages", async (req, res) => {
+  try {
+    const { limit } = req.query;
+    // IF limit EXISTS, RETURN LIMITED AMOUNT OF MESSAGES, ELSE, RETURN ALL MESSAGES
+    const searchObject = {};
+
+    await mongoClient.connect();
+    db = mongoClient.db("batepapo-uol-api");
+
+    const messages = await db
+      .collection("messages")
+      .find(searchObject)
+      .toArray();
+    res.status(200).send(messages);
+    mongoClient.close();
+  } catch (e) {
+    res.send("400");
     mongoClient.close();
   }
 });
