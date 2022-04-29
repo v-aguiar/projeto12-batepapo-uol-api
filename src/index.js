@@ -1,11 +1,11 @@
 ﻿import express, { json } from "express";
+import { MongoClient } from "mongodb";
+
 import cors from "cors";
 import chalk from "chalk";
 import dotenv from "dotenv";
 import dayjs from "dayjs";
 import utf8 from "utf8";
-
-import { MongoClient } from "mongodb";
 import Joi from "joi";
 
 dotenv.config();
@@ -45,7 +45,7 @@ app.get("/participants", async (req, res) => {
   }
 });
 
-// POST a new participant on the DB
+// POST a new participant on database
 app.post("/participants", async (req, res) => {
   try {
     const { name } = req.body;
@@ -97,7 +97,7 @@ app.post("/participants", async (req, res) => {
 
 //GET messages list
 app.get("/messages", async (req, res) => {
-  const user = req.headers.user;
+  const { user } = req.headers;
   const limit = parseInt(req.query.limit);
 
   try {
@@ -133,7 +133,7 @@ app.get("/messages", async (req, res) => {
   }
 });
 
-// POST a new message on the DB
+// POST a new message to database
 app.post("/messages", async (req, res) => {
   const { to, text, type } = req.body;
   const from = req.headers.user ? utf8.decode(req.headers.user) : undefined;
@@ -150,7 +150,7 @@ app.post("/messages", async (req, res) => {
       .findOne({ name: from });
 
     if (!isUserValid) {
-      res.status(401).send("⚠ User must be registered!");
+      res.status(404).send("⚠ User must be registered!");
       mongoClient.close();
       return;
     }
@@ -170,6 +170,40 @@ app.post("/messages", async (req, res) => {
     await db.collection("messages").insertOne(message);
 
     res.sendStatus(201);
+    mongoClient.close();
+  } catch (e) {
+    console.error(e);
+    res.sendStatus(422);
+    mongoClient.close();
+  }
+});
+
+// POST an update to the 'lastStatus' attribute with current Timestamp ?PUT
+app.post("/status", async (req, res) => {
+  const { user: name } = req.headers;
+
+  try {
+    // Connect with database
+    mongoClient.connect();
+    db = mongoClient.db("batepapo-uol-api");
+
+    // Validate if user is registered in database
+    const isUserValid = await db
+      .collection("participants")
+      .findOne({ name: name });
+
+    if (!isUserValid) {
+      res.sendStatus(404);
+      mongoClient.close();
+      return;
+    }
+
+    // Update 'lastStatus' attribute timestamp
+    await db
+      .collection("participants")
+      .updateOne({ name: name }, { $set: { lastStatus: Date.now() } });
+
+    res.sendStatus(200);
     mongoClient.close();
   } catch (e) {
     console.error(e);
