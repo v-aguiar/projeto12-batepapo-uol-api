@@ -1,5 +1,6 @@
 ﻿import express, { json } from "express";
 import { MongoClient } from "mongodb";
+import { stripHtml } from "string-strip-html";
 
 import cors from "cors";
 import chalk from "chalk";
@@ -37,38 +38,28 @@ setInterval(() => checkInactiveParticipants(), 15000);
 // GET all participants list
 app.get("/participants", async (req, res) => {
   try {
-    // await mongoClient.connect();
-    // db = mongoClient.db("batepapo-uol-api");
-
     const participants = await db.collection("participants").find({}).toArray();
     res.status(200).send(participants);
-    // mongoClient.close();
   } catch (e) {
     console.error(e);
     res.send("400");
-    // mongoClient.close();
   }
 });
 
 // POST a new participant on database
 app.post("/participants", async (req, res) => {
   try {
-    const { name } = req.body;
+    const name = stripHtml(req.body.name).result.trim();
     const time = dayjs().format("HH:mm:ss");
 
     // Validate name using Joi Schema
     await participants_schema.validateAsync({ name });
-
-    // Connect with database
-    // await mongoClient.connect();
-    // db = mongoClient.db("batepapo-uol-api");
 
     // Check if name already exists in db
     const hasName = await db.collection("participants").findOne({ name: name });
 
     if (hasName) {
       res.status(409).send("⚠ Name already registered!");
-      // mongoClient.close();
       return;
     }
 
@@ -91,12 +82,9 @@ app.post("/participants", async (req, res) => {
     await db.collection("messages").insertOne(message);
 
     res.sendStatus(201);
-    // mongoClient.close();
   } catch (e) {
     console.error(e);
-
     res.sendStatus(422);
-    // mongoClient.close();
   }
 });
 
@@ -106,10 +94,6 @@ app.get("/messages", async (req, res) => {
   const limit = parseInt(req.query.limit);
 
   try {
-    // Connect to DB
-    // await mongoClient.connect();
-    // db = mongoClient.db("batepapo-uol-api");
-
     // Get messages list with limited amount of documents if 'limit' exists
     const messages = limit
       ? await db
@@ -130,33 +114,27 @@ app.get("/messages", async (req, res) => {
     });
 
     res.status(200).send(filteredMsgs);
-    // mongoClient.close();
   } catch (e) {
     console.error(e);
     res.send("400");
-    // mongoClient.close();
   }
 });
 
 // POST a new message to database
 app.post("/messages", async (req, res) => {
-  const { to, text, type } = req.body;
-  const from = req.headers.user;
+  const to = stripHtml(req.body.to).result.trim();
+  const text = stripHtml(req.body.text).result.trim();
+  const type = stripHtml(req.body.type).result.trim();
+  const from = stripHtml(req.headers.user).result.trim();
   const time = dayjs().format("HH:mm:ss");
 
   try {
-    // Connect to DB
-    // await mongoClient.connect();
-    // db = mongoClient.db("batepapo-uol-api");
-
     // Validate if user is registered in DB
     const isUserValid = await db
       .collection("participants")
       .findOne({ name: from });
-
     if (!isUserValid) {
       res.status(404).send("⚠ User must be registered!");
-      // mongoClient.close();
       return;
     }
 
@@ -175,31 +153,23 @@ app.post("/messages", async (req, res) => {
     await db.collection("messages").insertOne(message);
 
     res.sendStatus(201);
-    // mongoClient.close();
   } catch (e) {
     console.error(e);
     res.sendStatus(422);
-    // mongoClient.close();
   }
 });
 
 // POST an update to the 'lastStatus' attribute with current Timestamp ?PUT
 app.post("/status", async (req, res) => {
-  const { user: name } = req.headers;
+  const name = stripHtml(req.headers.user).result.trim();
 
   try {
-    // Connect with database
-    // await mongoClient.connect();
-    // db = mongoClient.db("batepapo-uol-api");
-
     // Validate if user is registered in database
     const isUserValid = await db
       .collection("participants")
       .findOne({ name: name });
-
     if (!isUserValid) {
       res.sendStatus(404);
-      // mongoClient.close();
       return;
     }
 
@@ -209,11 +179,9 @@ app.post("/status", async (req, res) => {
       .updateOne({ name: name }, { $set: { lastStatus: Date.now() } });
 
     res.sendStatus(200);
-    // mongoClient.close();
   } catch (e) {
     console.error(e);
     res.sendStatus(422);
-    // mongoClient.close();
   }
 });
 
