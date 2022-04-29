@@ -29,6 +29,66 @@ const messages_schema = new Joi.object({
   from: Joi.string(),
 });
 
+// Remove participants who are inactive for more than 10 seconds
+const removeLazyParticipants = async () => {
+  try {
+    // Connect with database
+    await mongoClient.connect();
+    db = mongoClient.db("batepapo-uol-api");
+
+    // Get all registered participants
+    const participants = await db.collection("participants").find().toArray();
+    if (!participants) {
+      mongoClient.close();
+      throw "⚠ No participants found!";
+    }
+
+    // Filter participants who are inactive for more than 10 seconds
+    const lazyUsers = participants.filter(({ lastStatus }) => {
+      const currentSeconds = Date.now() / 1000;
+      const userSeconds = lastStatus / 1000;
+
+      return currentSeconds - userSeconds > 10;
+    });
+
+    // Break function whenever there are no lazy users connected
+    if (lazyUsers.length === 0) {
+      mongoClient.close();
+      return;
+    }
+
+    // Romove lazy users from database
+    for (let i = 0; i < lazyUsers.length; i++) {
+      const { _id } = lazyUsers[i];
+
+      await db.collection("participants").deleteOne({ _id: _id });
+    }
+
+    // Save a 'leave-room message' for each removed participant
+    for (let i = 0; i < lazyUsers.length; i++) {
+      const { from } = lazyUsers[i];
+
+      const leaveMessage = {
+        from,
+        to: "Todos",
+        text: "sai da sala...",
+        type: "status",
+        time: dayjs().format("HH:mm:ss"),
+      };
+
+      await db.collection("messages").insertOne(leaveMessage);
+    }
+
+    mongoClient.close();
+  } catch (e) {
+    console.error(e);
+    mongoClient.close();
+  }
+};
+
+// Set interval to run 'removeLazyParticipants()' in every 15 seconds
+setInterval(() => removeLazyParticipants(), 15000);
+
 // GET all participants list
 app.get("/participants", async (req, res) => {
   try {
@@ -55,8 +115,8 @@ app.post("/participants", async (req, res) => {
     await participants_schema.validateAsync({ name });
 
     // Connect to mongodb
+    await mongoClient.connect();
     db = mongoClient.db("batepapo-uol-api");
-    mongoClient.connect();
 
     // Check if name already exists in db
     const hasName = await db.collection("participants").findOne({ name: name });
@@ -119,7 +179,7 @@ app.get("/messages", async (req, res) => {
     const filteredMsgs = messages.filter(({ to, from, type }) => {
       const isUserMsg = from === user || to === user;
       const privateMessage = isUserMsg && type === "private_message";
-      const publicMessage = type === "message";
+      const publicMessage = type === "message" || type === "status";
 
       return privateMessage || publicMessage;
     });
@@ -184,7 +244,7 @@ app.post("/status", async (req, res) => {
 
   try {
     // Connect with database
-    mongoClient.connect();
+    await mongoClient.connect();
     db = mongoClient.db("batepapo-uol-api");
 
     // Validate if user is registered in database
