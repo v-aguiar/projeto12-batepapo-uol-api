@@ -5,7 +5,6 @@ import cors from "cors";
 import chalk from "chalk";
 import dotenv from "dotenv";
 import dayjs from "dayjs";
-import utf8 from "utf8";
 import Joi from "joi";
 
 dotenv.config();
@@ -16,7 +15,8 @@ app.use(json());
 
 // Set database client
 const mongoClient = new MongoClient(process.env.MONGO_URI);
-let db = null;
+mongoClient.connect();
+const db = mongoClient.db("batepapo-uol-api");
 
 // Set JOI validation schemas
 const participants_schema = new Joi.object({
@@ -30,16 +30,16 @@ const messages_schema = new Joi.object({
 });
 
 // Remove participants who are inactive for more than 10 seconds
-const removeLazyParticipants = async () => {
+async function removeLazyParticipants() {
   try {
     // Connect with database
-    await mongoClient.connect();
-    db = mongoClient.db("batepapo-uol-api");
+    // await mongoClient.connect();
+    // db = mongoClient.db("batepapo-uol-api");
 
     // Get all registered participants
     const participants = await db.collection("participants").find().toArray();
     if (!participants) {
-      mongoClient.close();
+      // mongoClient.close();
       throw "⚠ No participants found!";
     }
 
@@ -53,38 +53,51 @@ const removeLazyParticipants = async () => {
 
     // Break function whenever there are no lazy users connected
     if (lazyUsers.length === 0) {
-      mongoClient.close();
+      // mongoClient.close();
       return;
     }
 
-    // Romove lazy users from database
-    for (let i = 0; i < lazyUsers.length; i++) {
-      const { _id } = lazyUsers[i];
+    await deleteLazyUsers(lazyUsers);
+    await sendLeaveMessage(lazyUsers);
 
-      await db.collection("participants").deleteOne({ _id: _id });
-    }
-
-    // Save a 'leave-room message' for each removed participant
-    for (let i = 0; i < lazyUsers.length; i++) {
-      const { from } = lazyUsers[i];
-
-      const leaveMessage = {
-        from,
-        to: "Todos",
-        text: "sai da sala...",
-        type: "status",
-        time: dayjs().format("HH:mm:ss"),
-      };
-
-      await db.collection("messages").insertOne(leaveMessage);
-    }
-
-    mongoClient.close();
+    // mongoClient.close();
   } catch (e) {
     console.error(e);
-    mongoClient.close();
+    // mongoClient.close();
   }
-};
+}
+
+// Romove lazy users from database
+async function deleteLazyUsers(lazyUsers) {
+  // await mongoClient.connect();
+  // db = mongoClient.db("batepapo-uol-api");
+
+  for (let i = 0; i < lazyUsers.length; i++) {
+    const { _id } = lazyUsers[i];
+
+    await db.collection("participants").deleteOne({ _id: _id });
+  }
+}
+
+// Save a 'leave-room message' for each removed participant
+async function sendLeaveMessage(lazyUsers) {
+  // await mongoClient.connect();
+  // db = mongoClient.db("batepapo-uol-api");
+
+  for (let i = 0; i < lazyUsers.length; i++) {
+    const { name } = lazyUsers[i];
+
+    const leaveMessage = {
+      from: name,
+      to: "Todos",
+      text: "sai da sala...",
+      type: "status",
+      time: dayjs().format("HH:mm:ss"),
+    };
+
+    await db.collection("messages").insertOne(leaveMessage);
+  }
+}
 
 // Set interval to run 'removeLazyParticipants()' in every 15 seconds
 setInterval(() => removeLazyParticipants(), 15000);
@@ -92,16 +105,16 @@ setInterval(() => removeLazyParticipants(), 15000);
 // GET all participants list
 app.get("/participants", async (req, res) => {
   try {
-    await mongoClient.connect();
-    db = mongoClient.db("batepapo-uol-api");
+    // await mongoClient.connect();
+    // db = mongoClient.db("batepapo-uol-api");
 
     const participants = await db.collection("participants").find({}).toArray();
     res.status(200).send(participants);
-    mongoClient.close();
+    // mongoClient.close();
   } catch (e) {
     console.error(e);
     res.send("400");
-    mongoClient.close();
+    // mongoClient.close();
   }
 });
 
@@ -114,20 +127,20 @@ app.post("/participants", async (req, res) => {
     // Validate name using Joi Schema
     await participants_schema.validateAsync({ name });
 
-    // Connect to mongodb
-    await mongoClient.connect();
-    db = mongoClient.db("batepapo-uol-api");
+    // Connect with database
+    // await mongoClient.connect();
+    // db = mongoClient.db("batepapo-uol-api");
 
     // Check if name already exists in db
     const hasName = await db.collection("participants").findOne({ name: name });
 
     if (hasName) {
       res.status(409).send("⚠ Name already registered!");
-      mongoClient.close();
+      // mongoClient.close();
       return;
     }
 
-    // Format data to be sent to the db;
+    // Format data to be sent to database
     const participant = {
       name: name,
       lastStatus: Date.now(),
@@ -141,17 +154,17 @@ app.post("/participants", async (req, res) => {
       time,
     };
 
-    // Save participant and 'enter-room message' on MongoDB
+    // Save participant and 'enter-room message' on database
     await db.collection("participants").insertOne(participant);
     await db.collection("messages").insertOne(message);
 
     res.sendStatus(201);
-    mongoClient.close();
+    // mongoClient.close();
   } catch (e) {
     console.error(e);
 
     res.sendStatus(422);
-    mongoClient.close();
+    // mongoClient.close();
   }
 });
 
@@ -162,15 +175,15 @@ app.get("/messages", async (req, res) => {
 
   try {
     // Connect to DB
-    await mongoClient.connect();
-    db = mongoClient.db("batepapo-uol-api");
+    // await mongoClient.connect();
+    // db = mongoClient.db("batepapo-uol-api");
 
     // Get messages list with limited amount of documents if 'limit' exists
     const messages = limit
       ? await db
           .collection("messages")
           .find()
-          .sort({ _id: -1 })
+          .sort({ _id: 1 })
           .limit(limit)
           .toArray()
       : await db.collection("messages").find().toArray();
@@ -185,24 +198,24 @@ app.get("/messages", async (req, res) => {
     });
 
     res.status(200).send(filteredMsgs);
-    mongoClient.close();
+    // mongoClient.close();
   } catch (e) {
     console.error(e);
     res.send("400");
-    mongoClient.close();
+    // mongoClient.close();
   }
 });
 
 // POST a new message to database
 app.post("/messages", async (req, res) => {
   const { to, text, type } = req.body;
-  const from = req.headers.user ? utf8.decode(req.headers.user) : undefined;
+  const from = req.headers.user;
   const time = dayjs().format("HH:mm:ss");
 
   try {
     // Connect to DB
-    await mongoClient.connect();
-    db = mongoClient.db("batepapo-uol-api");
+    // await mongoClient.connect();
+    // db = mongoClient.db("batepapo-uol-api");
 
     // Validate if user is registered in DB
     const isUserValid = await db
@@ -211,7 +224,7 @@ app.post("/messages", async (req, res) => {
 
     if (!isUserValid) {
       res.status(404).send("⚠ User must be registered!");
-      mongoClient.close();
+      // mongoClient.close();
       return;
     }
 
@@ -230,11 +243,11 @@ app.post("/messages", async (req, res) => {
     await db.collection("messages").insertOne(message);
 
     res.sendStatus(201);
-    mongoClient.close();
+    // mongoClient.close();
   } catch (e) {
     console.error(e);
     res.sendStatus(422);
-    mongoClient.close();
+    // mongoClient.close();
   }
 });
 
@@ -244,8 +257,8 @@ app.post("/status", async (req, res) => {
 
   try {
     // Connect with database
-    await mongoClient.connect();
-    db = mongoClient.db("batepapo-uol-api");
+    // await mongoClient.connect();
+    // db = mongoClient.db("batepapo-uol-api");
 
     // Validate if user is registered in database
     const isUserValid = await db
@@ -254,7 +267,7 @@ app.post("/status", async (req, res) => {
 
     if (!isUserValid) {
       res.sendStatus(404);
-      mongoClient.close();
+      // mongoClient.close();
       return;
     }
 
@@ -264,12 +277,19 @@ app.post("/status", async (req, res) => {
       .updateOne({ name: name }, { $set: { lastStatus: Date.now() } });
 
     res.sendStatus(200);
-    mongoClient.close();
+    // mongoClient.close();
   } catch (e) {
     console.error(e);
     res.sendStatus(422);
-    mongoClient.close();
+    // mongoClient.close();
   }
+});
+
+/* WARNING!!! ⚠ ⚠ ⚠ ⚠ ⚠ DELETE ALL MESSAGES STORED ON DATABASE ⚠ ⚠ ⚠ ⚠ ⚠  WARNING!!! */
+app.delete("/delete-all-messages", async (req, res) => {
+  await db.collection("messages").deleteMany({});
+
+  res.send("Deleted");
 });
 
 app.listen(5000, () =>
