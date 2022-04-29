@@ -7,6 +7,8 @@ import dotenv from "dotenv";
 import dayjs from "dayjs";
 import Joi from "joi";
 
+import checkInactiveParticipants from "./utils/checkInactiveParticipants.js";
+
 dotenv.config();
 
 const app = express();
@@ -29,78 +31,8 @@ const messages_schema = new Joi.object({
   from: Joi.string(),
 });
 
-// Remove participants who are inactive for more than 10 seconds
-async function removeLazyParticipants() {
-  try {
-    // Connect with database
-    // await mongoClient.connect();
-    // db = mongoClient.db("batepapo-uol-api");
-
-    // Get all registered participants
-    const participants = await db.collection("participants").find().toArray();
-    if (!participants) {
-      // mongoClient.close();
-      throw "⚠ No participants found!";
-    }
-
-    // Filter participants who are inactive for more than 10 seconds
-    const lazyUsers = participants.filter(({ lastStatus }) => {
-      const currentSeconds = Date.now() / 1000;
-      const userSeconds = lastStatus / 1000;
-
-      return currentSeconds - userSeconds > 10;
-    });
-
-    // Break function whenever there are no lazy users connected
-    if (lazyUsers.length === 0) {
-      // mongoClient.close();
-      return;
-    }
-
-    await deleteLazyUsers(lazyUsers);
-    await sendLeaveMessage(lazyUsers);
-
-    // mongoClient.close();
-  } catch (e) {
-    console.error(e);
-    // mongoClient.close();
-  }
-}
-
-// Romove lazy users from database
-async function deleteLazyUsers(lazyUsers) {
-  // await mongoClient.connect();
-  // db = mongoClient.db("batepapo-uol-api");
-
-  for (let i = 0; i < lazyUsers.length; i++) {
-    const { _id } = lazyUsers[i];
-
-    await db.collection("participants").deleteOne({ _id: _id });
-  }
-}
-
-// Save a 'leave-room message' for each removed participant
-async function sendLeaveMessage(lazyUsers) {
-  // await mongoClient.connect();
-  // db = mongoClient.db("batepapo-uol-api");
-
-  for (let i = 0; i < lazyUsers.length; i++) {
-    const { name } = lazyUsers[i];
-
-    const leaveMessage = {
-      from: name,
-      to: "Todos",
-      text: "sai da sala...",
-      type: "status",
-      time: dayjs().format("HH:mm:ss"),
-    };
-
-    await db.collection("messages").insertOne(leaveMessage);
-  }
-}
-
-// Set interval to run 'removeLazyParticipants()' in every 15 seconds
-setInterval(() => removeLazyParticipants(), 15000);
+// Set interval to run 'checkInactiveParticipants()' in every 15 seconds
+setInterval(() => checkInactiveParticipants(), 15000);
 
 // GET all participants list
 app.get("/participants", async (req, res) => {
