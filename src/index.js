@@ -97,12 +97,15 @@ app.post("/participants", async (req, res) => {
 
 //GET messages list
 app.get("/messages", async (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit);
+  const user = req.headers.user;
+  const limit = parseInt(req.query.limit);
 
+  try {
+    // Connect to DB
     await mongoClient.connect();
     db = mongoClient.db("batepapo-uol-api");
 
+    // Get messages list with limited amount of documents if 'limit' exists
     const messages = limit
       ? await db
           .collection("messages")
@@ -112,7 +115,16 @@ app.get("/messages", async (req, res) => {
           .toArray()
       : await db.collection("messages").find().toArray();
 
-    res.status(200).send(messages);
+    // Filter messages
+    const filteredMsgs = messages.filter(({ to, from, type }) => {
+      const isUserMsg = from === user || to === user;
+      const privateMessage = isUserMsg && type === "private_message";
+      const publicMessage = type === "message";
+
+      return privateMessage || publicMessage;
+    });
+
+    res.status(200).send(filteredMsgs);
     mongoClient.close();
   } catch (e) {
     console.error(e);
@@ -124,10 +136,8 @@ app.get("/messages", async (req, res) => {
 // POST a new message on the DB
 app.post("/messages", async (req, res) => {
   const { to, text, type } = req.body;
-  const from = utf8.decode(req.headers.user);
+  const from = req.headers.user ? utf8.decode(req.headers.user) : undefined;
   const time = dayjs().format("HH:mm:ss");
-
-  console.log("\nuser from: ", from);
 
   try {
     // Connect to DB
@@ -138,8 +148,6 @@ app.post("/messages", async (req, res) => {
     const isUserValid = await db
       .collection("participants")
       .findOne({ name: from });
-
-    console.log("\nisUserValid: ", isUserValid);
 
     if (!isUserValid) {
       res.status(401).send("⚠ User must be registered!");
@@ -164,7 +172,7 @@ app.post("/messages", async (req, res) => {
     res.sendStatus(201);
     mongoClient.close();
   } catch (e) {
-    console.error(e.message + "\nError: " + e);
+    console.error(e);
     res.sendStatus(422);
     mongoClient.close();
   }
