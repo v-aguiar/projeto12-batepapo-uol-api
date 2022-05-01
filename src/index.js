@@ -1,5 +1,5 @@
 ﻿import express, { json } from "express";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import { stripHtml } from "string-strip-html";
 
 import cors from "cors";
@@ -49,11 +49,14 @@ app.get("/participants", async (req, res) => {
 // POST a new participant on database
 app.post("/participants", async (req, res) => {
   try {
-    const name = stripHtml(req.body.name).result.trim();
+    let { name } = req.body;
     const time = dayjs().format("HH:mm:ss");
 
     // Validate name using Joi Schema
     await participants_schema.validateAsync({ name });
+
+    // Remove possible html tags from name string
+    name = stripHtml(name).result.trim();
 
     // Check if name already exists in db
     const hasName = await db.collection("participants").findOne({ name: name });
@@ -122,10 +125,8 @@ app.get("/messages", async (req, res) => {
 
 // POST a new message to database
 app.post("/messages", async (req, res) => {
-  const to = stripHtml(req.body.to).result.trim();
-  const text = stripHtml(req.body.text).result.trim();
-  const type = stripHtml(req.body.type).result.trim();
-  const from = stripHtml(req.headers.user).result.trim();
+  const { to, text, type } = req.body;
+  const { user: from } = req.headers;
   const time = dayjs().format("HH:mm:ss");
 
   try {
@@ -143,11 +144,11 @@ app.post("/messages", async (req, res) => {
 
     // Save validated massage on DB
     const message = {
+      from: stripHtml(from).result.trim(),
+      to: stripHtml(to).result.trim(),
+      text: stripHtml(text).result.trim(),
+      type: stripHtml(type).result.trim(),
       time,
-      from,
-      to,
-      text,
-      type,
     };
 
     await db.collection("messages").insertOne(message);
@@ -156,6 +157,40 @@ app.post("/messages", async (req, res) => {
   } catch (e) {
     console.error(e);
     res.sendStatus(422);
+  }
+});
+
+app.delete("/messages/:messageId", async (req, res) => {
+  const { messageId: id } = req.params;
+  let { user: from } = req.headers;
+
+  console.log("\nReached delete...");
+  console.log("From: ", from);
+  console.log("ID do BACK: : ", id);
+
+  try {
+    const message = await db
+      .collection("messages")
+      .findOne({ _id: new ObjectId(id) });
+
+    console.log("Message to be deleted: ", message);
+
+    if (message.length === 0) {
+      res.status(404).send("⚠ No message found with given ID!");
+      // res.sendStatus(404);
+      return;
+    }
+
+    if (message.from !== from) {
+      res.status(401).send("⚠ Must own message to delete it!");
+      res.sendStatus(401);
+    }
+
+    await db.collection("messages").deleteOne({ _id: new ObjectId(id) });
+    res.sendStatus(200);
+  } catch (e) {
+    console.error(e);
+    res.sendStatus(404);
   }
 });
 
