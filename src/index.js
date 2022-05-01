@@ -331,26 +331,6 @@ app.post("/status", async (req, res) => {
   }
 });
 
-/* WARNING!!! ⚠ ⚠ ⚠ ⚠ ⚠ DELETE ALL MESSAGES STORED ON DATABASE ⚠ ⚠ ⚠ ⚠ ⚠  WARNING!!! */
-app.delete("/delete-all-messages", async (req, res) => {
-  const mongoClient = new MongoClient(process.env.MONGO_URI);
-
-  try {
-    // Connect to database
-    await mongoClient.connect();
-    const db = mongoClient.db("batepapo-uol-api");
-
-    await db.collection("messages").deleteMany({});
-
-    res.send("Deleted");
-    mongoClient.close();
-  } catch (e) {
-    console.error(e);
-    res.send(404);
-    mongoClient.close();
-  }
-});
-
 app.listen(5000, () =>
   console.log(
     chalk.bold.greenBright("\n🚀 Server is running!") +
